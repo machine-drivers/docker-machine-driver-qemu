@@ -267,6 +267,7 @@ func (d *Driver) Start() error {
 	machineDir := filepath.Join(d.StorePath, "machines", d.GetMachineName())
 
 	startCmd := []string{
+		"-display", "none",
 		"-m", fmt.Sprintf("%d", d.Memory),
 		"-boot", "d",
 		"-cdrom", filepath.Join(machineDir, "boot2docker.iso"),
