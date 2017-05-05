@@ -3,13 +3,16 @@ package qemu
 import (
 	"archive/tar"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/docker/machine/libmachine/drivers"
 	"github.com/docker/machine/libmachine/log"
@@ -36,6 +39,7 @@ type Driver struct {
 	PrivateNetwork   string
 	ISO              string
 	Boot2DockerURL   string
+	NetworkBridge    string
 	CaCertPath       string
 	PrivateKeyPath   string
 	DiskPath         string
@@ -140,6 +144,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.CPU = flags.Int("qemu-cpu-count")
 	d.Network = flags.String("qemu-network")
 	d.Boot2DockerURL = flags.String("qemu-boot2docker-url")
+	d.NetworkBridge = flags.String("qemu-network-bridge")
 	d.CacheMode = flags.String("qemu-cache-mode")
 	d.IOMode = flags.String("qemu-io-mode")
 
@@ -182,6 +187,24 @@ func (d *Driver) GetIP() (string, error) {
 }
 
 func (d *Driver) GetState() (state.State, error) {
+
+	ret, err := d.RunQMPCommand("query-status")
+	if err != nil {
+		return state.Error, err
+	}
+	// RunState is one of:
+	// 'debug', 'inmigrate', 'internal-error', 'io-error', 'paused',
+	// 'postmigrate', 'prelaunch', 'finish-migrate', 'restore-vm',
+	// 'running', 'save-vm', 'shutdown', 'suspended', 'watchdog',
+	// 'guest-panicked'
+	switch ret["status"] {
+	case "running":
+		return state.Running, nil
+	case "paused":
+		return state.Paused, nil
+	case "shutdown":
+		return state.Stopped, nil
+	}
 	return state.None, nil
 }
 
@@ -201,64 +224,82 @@ func (d *Driver) Create() error {
 	}
 
 	log.Infof("Creating SSH key...")
-
 	if err := ssh.GenerateSSHKey(d.sshKeyPath()); err != nil {
 		return err
 	}
 
 	log.Infof("Creating Disk image...")
-
 	if err := d.generateDiskImage(d.DiskSize); err != nil {
+		return err
+	}
+
+	log.Infof("Starting QEMU VM...")
+	if err := d.Start(); err != nil {
 		return err
 	}
 	return nil
 }
 
 func getAvailableTCPPort() (int, error) {
-	// FIXME: this has a race condition between finding an available port and
-	// virtualbox using that port. Perhaps we should randomly pick an unused
-	// port in a range not used by kernel for assigning ports
-	ln, err := net.Listen("tcp4", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
+	port := 0
+	for i := 0; i <= 10; i++ {
+		ln, err := net.Listen("tcp4", "127.0.0.1:0")
+		if err != nil {
+			return 0, err
+		}
+		defer ln.Close()
+		addr := ln.Addr().String()
+		addrParts := strings.SplitN(addr, ":", 2)
+		p, err := strconv.Atoi(addrParts[1])
+		if err != nil {
+			return 0, err
+		}
+		if p != 0 {
+			port = p
+			return port, nil
+		}
+		time.Sleep(1)
 	}
-	defer ln.Close()
-	addr := ln.Addr().String()
-	addrParts := strings.SplitN(addr, ":", 2)
-	return strconv.Atoi(addrParts[1])
+	return 0, fmt.Errorf("unable to allocate tcp port")
 }
 
 func (d *Driver) Start() error {
 	// fmt.Printf("Init qemu %s\n", i.VM)
 
-	// qemu-system-x86_64 -net nic -net user -m 2048M -boot d -cdrom boot2docker.iso persist.raw
-
-	// qemu-system-x86_64 -enable-kvm -m 4096 -cdrom boot2docker.iso -boot order=d -net nic,vlan=0 -net user,vlan=0 -serial stdio
-
-	// http://en.wikibooks.org/wiki/QEMU/Networking <<<< and samba sharing directly..
-
 	startCmd := []string{
-		// TODO add as param		"-curses",
-		// "-enable-kvm", // need to test to see if its available
 		"-netdev", "user,id=network0",
-		"-device", "e1000,netdev=network0",
+		"-device", "virtio-net,netdev=network0",
 		"-redir", fmt.Sprintf("tcp:%d::22", d.SSHPort),
 		"-m", fmt.Sprintf("%d", d.Memory),
 		"-boot", "d",
-		"-cdrom", "./boot2docker.iso",
-		d.diskPath(),
+		"-cdrom", filepath.Join(d.StorePath, "boot2docker.iso"),
+		"-qmp", fmt.Sprintf("unix:%s,server,nowait", d.monitorPath()),
+		"-netdev", fmt.Sprintf("bridge,id=network1,br=%s", d.NetworkBridge),
+		"-device", "virtio-net,netdev=network1",
+		"-daemonize",
 	}
+
+	// other options
+	// "-enable-kvm" if its available
+	if _, err := os.Stat("/dev/kvm"); err == nil {
+		startCmd = append(startCmd, "-enable-kvm")
+	}
+
+	// last argument is always the name of the disk image
+	startCmd = append(startCmd, d.diskPath())
 
 	if stdout, stderr, err := cmdOutErr("qemu-system-x86_64", startCmd...); err != nil {
 		fmt.Printf("OUTPUT: %s\n", stdout)
 		fmt.Printf("ERROR: %s\n", stderr)
-		//	if err := cmdStart("qemu-system-x86_64", startCmd...); err != nil {
 		return err
+		//if err := cmdStart("qemu-system-x86_64", startCmd...); err != nil {
+		//	return err
 	}
 	log.Infof("Waiting for VM to start (ssh -p %d docker@localhost)...", d.SSHPort)
 
-	return nil
+	//return nil
 	//return ssh.WaitForTCP(fmt.Sprintf("localhost:%d", d.SSHPort))
+	return WaitForTCPWithDelay(fmt.Sprintf("localhost:%d", d.SSHPort), time.Second)
 }
 
 func cmdOutErr(cmdStr string, args ...string) (string, string, error) {
@@ -277,8 +318,8 @@ func cmdOutErr(cmdStr string, args ...string) (string, string, error) {
 			err = fmt.Errorf("mystery error: %s", ee)
 		}
 	} else {
-		// VBoxManage will sometimes not set the return code, but has a fatal error
-		// such as VBoxManage.exe: error: VT-x is not available. (VERR_VMX_NO_VMX)
+		// also catch error messages in stderr, even if the return code
+		// looks OK
 		if strings.Contains(stderrStr, "error:") {
 			err = fmt.Errorf("%v %v failed: %v", cmdStr, strings.Join(args, " "), stderrStr)
 		}
@@ -293,19 +334,52 @@ func cmdStart(cmdStr string, args ...string) error {
 }
 
 func (d *Driver) Stop() error {
-	return fmt.Errorf("hosts without a driver cannot be stopped")
+	// _, err := d.RunQMPCommand("stop")
+	_, err := d.RunQMPCommand("system_powerdown")
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (d *Driver) Remove() error {
+	s, err := d.GetState()
+	if err != nil {
+		return err
+	}
+	if s == state.Running {
+		if err := d.Kill(); err != nil {
+			return err
+		}
+	}
+	_, err = d.RunQMPCommand("quit")
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 func (d *Driver) Restart() error {
-	return fmt.Errorf("hosts without a driver cannot be restarted")
+	s, err := d.GetState()
+	if err != nil {
+		return err
+	}
+
+	if s == state.Running {
+		if err := d.Stop(); err != nil {
+			return err
+		}
+	}
+	return d.Start()
 }
 
 func (d *Driver) Kill() error {
-	return fmt.Errorf("hosts without a driver cannot be killed")
+	// _, err := d.RunQMPCommand("quit")
+	_, err := d.RunQMPCommand("system_powerdown")
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (d *Driver) StartDocker() error {
@@ -338,6 +412,10 @@ func (d *Driver) publicSSHKeyPath() string {
 
 func (d *Driver) diskPath() string {
 	return filepath.Join(d.StorePath, "disk.qcow2")
+}
+
+func (d *Driver) monitorPath() string {
+	return filepath.Join(d.StorePath, "monitor")
 }
 
 // Make a boot2docker VM disk image.
@@ -410,5 +488,110 @@ func (d *Driver) generateDiskImage(size int) error {
 	}
 	log.Debugf("DONE writing to %s and %s", rawFile, d.diskPath())
 
+	return nil
+}
+
+func (d *Driver) RunQMPCommand(command string) (map[string]interface{}, error) {
+
+	// connect to monitor
+	conn, err := net.Dial("unix", d.monitorPath())
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	// initial QMP response
+	var buf [1024]byte
+	nr, err := conn.Read(buf[:])
+	if err != nil {
+		return nil, err
+	}
+	type qmpInitialResponse struct {
+		QMP struct {
+			Version struct {
+				QEMU struct {
+					Micro int `json:"micro"`
+					Minor int `json:"minor"`
+					Major int `json:"major"`
+				} `json:"qemu"`
+				Package string `json:"package"`
+			} `json:"version"`
+			Capabilities []string `json:"capabilities"`
+		} `jason:"QMP"`
+	}
+
+	var initialResponse qmpInitialResponse
+	json.Unmarshal(buf[:nr], &initialResponse)
+
+	// run 'qmp_capabilities' to switch to command mode
+	// { "execute": "qmp_capabilities" }
+	type qmpCommand struct {
+		Command string `json:"execute"`
+	}
+	jsonCommand, err := json.Marshal(qmpCommand{Command: "qmp_capabilities"})
+	if err != nil {
+		return nil, err
+	}
+	_, err = conn.Write(jsonCommand)
+	if err != nil {
+		return nil, err
+	}
+	nr, err = conn.Read(buf[:])
+	if err != nil {
+		return nil, err
+	}
+	type qmpResponse struct {
+		Return map[string]interface{} `json:"return"`
+	}
+	var response qmpResponse
+	err = json.Unmarshal(buf[:nr], &response)
+	if err != nil {
+		return nil, err
+	}
+	// expecting empty response
+	if len(response.Return) != 0 {
+		return nil, fmt.Errorf("qmp_capabilities failed: %v", response.Return)
+	}
+
+	// { "execute": command }
+	jsonCommand, err = json.Marshal(qmpCommand{Command: command})
+	if err != nil {
+		return nil, err
+	}
+	_, err = conn.Write(jsonCommand)
+	if err != nil {
+		return nil, err
+	}
+	nr, err = conn.Read(buf[:])
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(buf[:nr], &response)
+	if err != nil {
+		return nil, err
+	}
+	if strings.HasPrefix(command, "query-") {
+		return response.Return, nil
+	}
+	// non-query commands should return an empty response
+	if len(response.Return) != 0 {
+		return nil, fmt.Errorf("%s failed: %v", command, response.Return)
+	}
+	return response.Return, nil
+}
+
+func WaitForTCPWithDelay(addr string, duration time.Duration) error {
+	for {
+		conn, err := net.Dial("tcp", addr)
+		if err != nil {
+			continue
+		}
+		defer conn.Close()
+		if _, err = conn.Read(make([]byte, 1)); err != nil {
+			time.Sleep(duration)
+			continue
+		}
+		break
+	}
 	return nil
 }
