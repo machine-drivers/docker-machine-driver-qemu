@@ -274,7 +274,7 @@ func cmdOutErr(cmdStr string, args ...string) (string, string, error) {
 	log.Debugf("STDERR: %v", stderrStr)
 	if err != nil {
 		if ee, ok := err.(*exec.Error); ok && ee == exec.ErrNotFound {
-			err = fmt.Errorf("Mystery!")
+			err = fmt.Errorf("mystery error: %s", ee)
 		}
 	} else {
 		// VBoxManage will sometimes not set the return code, but has a fatal error
