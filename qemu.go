@@ -274,7 +274,8 @@ func (d *Driver) Start() error {
 		"-boot", "d",
 		"-cdrom", filepath.Join(d.StorePath, "boot2docker.iso"),
 		"-qmp", fmt.Sprintf("unix:%s,server,nowait", d.monitorPath()),
-		"-netdev", fmt.Sprintf("bridge,id=network1,br=%s", d.NetworkBridge),
+//		"-netdev", fmt.Sprintf("bridge,id=network1,br=%s", d.NetworkBridge),
+		"-net", "nic,vlan=0,model=virtio", "-net", "user,vlan=0,hostfwd=tcp::2222-:22,hostname=rancher-dev",
 		"-device", "virtio-net,netdev=network1",
 		"-daemonize",
 	}
