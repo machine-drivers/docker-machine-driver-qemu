@@ -37,7 +37,6 @@ type Driver struct {
 	CPU              int
 	Network          string
 	PrivateNetwork   string
-	ISO              string
 	Boot2DockerURL   string
 	NetworkBridge    string
 	CaCertPath       string
@@ -110,7 +109,8 @@ func (d *Driver) GetMachineName() string {
 }
 
 func (d *Driver) GetSSHHostname() (string, error) {
-	return d.GetIP()
+	return "localhost", nil
+	//return d.GetIP()
 }
 
 func (d *Driver) GetSSHKeyPath() string {
@@ -151,7 +151,6 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.SwarmMaster = flags.Bool("swarm-master")
 	d.SwarmHost = flags.String("swarm-host")
 	d.SwarmDiscovery = flags.String("swarm-discovery")
-	d.ISO = d.ResolveStorePath(isoFilename)
 	d.SSHUser = flags.String("qemu-ssh-user")
 	d.SSHPort = 22
 	d.DiskPath = d.ResolveStorePath(fmt.Sprintf("%s.img", d.MachineName))
@@ -265,18 +264,20 @@ func getAvailableTCPPort() (int, error) {
 
 func (d *Driver) Start() error {
 	// fmt.Printf("Init qemu %s\n", i.VM)
+	machineDir := filepath.Join(d.StorePath, "machines", d.GetMachineName())
 
 	startCmd := []string{
-		"-netdev", "user,id=network0",
-		"-device", "virtio-net,netdev=network0",
-		"-redir", fmt.Sprintf("tcp:%d::22", d.SSHPort),
 		"-m", fmt.Sprintf("%d", d.Memory),
 		"-boot", "d",
-		"-cdrom", filepath.Join(d.StorePath, "boot2docker.iso"),
+		"-cdrom", filepath.Join(machineDir, "boot2docker.iso"),
 		"-qmp", fmt.Sprintf("unix:%s,server,nowait", d.monitorPath()),
-//		"-netdev", fmt.Sprintf("bridge,id=network1,br=%s", d.NetworkBridge),
-		"-net", "nic,vlan=0,model=virtio", "-net", "user,vlan=0,hostfwd=tcp::2222-:22,hostname=rancher-dev",
-		"-device", "virtio-net,netdev=network1",
+		//		"-netdev", "user,id=network0",
+		//		"-device", "virtio-net,netdev=network0",
+		//		"-netdev", fmt.Sprintf("bridge,id=network1,br=%s", d.NetworkBridge),
+		//		"-redir", fmt.Sprintf("tcp:%d::22", d.SSHPort),
+		//		"-device", "virtio-net,netdev=network1",
+		"-net", "nic,vlan=0,model=virtio",
+		"-net", fmt.Sprintf("user,vlan=0,hostfwd=tcp::%d-:22,hostname=%s", d.SSHPort, d.GetMachineName()),
 		"-daemonize",
 	}
 
@@ -298,7 +299,6 @@ func (d *Driver) Start() error {
 	}
 	log.Infof("Waiting for VM to start (ssh -p %d docker@localhost)...", d.SSHPort)
 
-	//return nil
 	//return ssh.WaitForTCP(fmt.Sprintf("localhost:%d", d.SSHPort))
 	return WaitForTCPWithDelay(fmt.Sprintf("localhost:%d", d.SSHPort), time.Second)
 }
@@ -404,7 +404,8 @@ func (d *Driver) Upgrade() error {
 //}
 
 func (d *Driver) sshKeyPath() string {
-	return filepath.Join(d.StorePath, "id_rsa")
+	machineDir := filepath.Join(d.StorePath, "machines", d.GetMachineName())
+	return filepath.Join(machineDir, "id_rsa")
 }
 
 func (d *Driver) publicSSHKeyPath() string {
@@ -412,11 +413,13 @@ func (d *Driver) publicSSHKeyPath() string {
 }
 
 func (d *Driver) diskPath() string {
-	return filepath.Join(d.StorePath, "disk.qcow2")
+	machineDir := filepath.Join(d.StorePath, "machines", d.GetMachineName())
+	return filepath.Join(machineDir, "disk.qcow2")
 }
 
 func (d *Driver) monitorPath() string {
-	return filepath.Join(d.StorePath, "monitor")
+	machineDir := filepath.Join(d.StorePath, "machines", d.GetMachineName())
+	return filepath.Join(machineDir, "monitor")
 }
 
 // Make a boot2docker VM disk image.
