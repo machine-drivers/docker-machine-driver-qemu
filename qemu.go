@@ -47,7 +47,9 @@ type Driver struct {
 	connectionString string
 	//	conn             *libvirt.Connect
 	//	VM               *libvirt.Domain
-	vmLoaded bool
+	vmLoaded        bool
+	UserDataFile    string
+	CloudConfigRoot string
 }
 
 func (d *Driver) GetCreateFlags() []mcnflag.Flag {
@@ -94,6 +96,10 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Name:   "qemu-ssh-user",
 			Usage:  "SSH username",
 			Value:  defaultSSHUser,
+		},
+		mcnflag.StringFlag{
+			Name:  "qemu-userdata",
+			Usage: "cloud-config userdata file",
 		},
 		/* Not yet implemented
 		mcnflag.Flag{
@@ -152,6 +158,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.SwarmHost = flags.String("swarm-host")
 	d.SwarmDiscovery = flags.String("swarm-discovery")
 	d.SSHUser = flags.String("qemu-ssh-user")
+	d.UserDataFile = flags.String("qemu-userdata")
 	d.SSHPort = 22
 	d.DiskPath = d.ResolveStorePath(fmt.Sprintf("%s.img", d.MachineName))
 	return nil
@@ -232,6 +239,13 @@ func (d *Driver) Create() error {
 		return err
 	}
 
+	if d.UserDataFile != "" {
+		log.Infof("Creating Userdata Disk...")
+		if d.CloudConfigRoot, err = d.generateUserdataDisk(d.UserDataFile); err != nil {
+			return err
+		}
+	}
+
 	log.Infof("Starting QEMU VM...")
 	if err := d.Start(); err != nil {
 		return err
@@ -286,6 +300,13 @@ func (d *Driver) Start() error {
 	// "-enable-kvm" if its available
 	if _, err := os.Stat("/dev/kvm"); err == nil {
 		startCmd = append(startCmd, "-enable-kvm")
+	}
+
+	if d.CloudConfigRoot != "" {
+		startCmd = append(startCmd,
+			"-fsdev",
+			fmt.Sprintf("local,security_model=passthrough,readonly,id=fsdev0,path=%s", d.CloudConfigRoot))
+		startCmd = append(startCmd, "-device", "virtio-9p-pci,id=fs0,fsdev=fsdev0,mount_tag=config-2")
 	}
 
 	// last argument is always the name of the disk image
@@ -494,6 +515,35 @@ func (d *Driver) generateDiskImage(size int) error {
 	log.Debugf("DONE writing to %s and %s", rawFile, d.diskPath())
 
 	return nil
+}
+
+func (d *Driver) generateUserdataDisk(userdataFile string) (string, error) {
+	// Start with virtio, add ISO & FAT format later
+	// Start with local file, add wget/fetct URL? (or if URL, use datasource..)
+	log.Infof("1")
+	userdata, err := ioutil.ReadFile(userdataFile)
+	if err != nil {
+		return "", err
+	}
+
+	log.Infof("2")
+	machineDir := filepath.Join(d.StorePath, "machines", d.GetMachineName())
+	ccRoot := filepath.Join(machineDir, "cloud-config")
+	os.MkdirAll(ccRoot, 0755)
+
+	log.Infof("3")
+	userDataDir := filepath.Join(ccRoot, "openstack/latest")
+	os.MkdirAll(userDataDir, 0755)
+
+	log.Infof("4")
+	writeFile := filepath.Join(userDataDir, "user_data")
+	if err := ioutil.WriteFile(writeFile, userdata, 0644); err != nil {
+		return "", err
+	}
+	log.Infof("5")
+
+	return ccRoot, nil
+
 }
 
 func (d *Driver) RunQMPCommand(command string) (map[string]interface{}, error) {
