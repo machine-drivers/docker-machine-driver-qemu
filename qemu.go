@@ -209,6 +209,10 @@ func (d *Driver) GetIP() (string, error) {
 	return "127.0.0.1", nil
 }
 
+func (d *Driver) GetPort() (int, error) {
+	return d.EnginePort, nil
+}
+
 func (d *Driver) GetState() (state.State, error) {
 
 	ret, err := d.RunQMPCommand("query-status")
