@@ -206,7 +206,7 @@ func NewDriver(hostName, storePath string) drivers.Driver {
 }
 
 func (d *Driver) GetIP() (string, error) {
-	return "", nil
+	return "127.0.0.1", nil
 }
 
 func (d *Driver) GetState() (state.State, error) {
