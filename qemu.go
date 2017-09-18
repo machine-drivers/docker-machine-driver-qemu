@@ -304,6 +304,7 @@ func (d *Driver) Start() error {
 	startCmd := []string{
 		"-display", "none",
 		"-m", fmt.Sprintf("%d", d.Memory),
+		"-smp", fmt.Sprintf("%d", d.CPU),
 		"-boot", "d",
 		"-cdrom", filepath.Join(machineDir, "boot2docker.iso"),
 		"-qmp", fmt.Sprintf("unix:%s,server,nowait", d.monitorPath()),
