@@ -32,6 +32,7 @@ const (
 type Driver struct {
 	*drivers.BaseDriver
 	EnginePort       int
+	FirstQuery       bool
 
 	Memory           int
 	DiskSize         int
@@ -169,6 +170,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.SSHUser = flags.String("qemu-ssh-user")
 	d.UserDataFile = flags.String("qemu-userdata")
 	d.EnginePort = 2376
+	d.FirstQuery = true
 	d.SSHPort = 22
 	d.DiskPath = d.ResolveStorePath(fmt.Sprintf("%s.img", d.MachineName))
 	return nil
@@ -185,6 +187,10 @@ func (d *Driver) GetURL() (string, error) {
 		return "", nil
 	}
 	port, err := d.GetEnginePort()
+	if (d.FirstQuery) {
+		d.FirstQuery = false
+		port = 2376
+	}
 	return fmt.Sprintf("tcp://%s:%d", ip, port), nil
 }
 
