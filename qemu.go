@@ -78,7 +78,7 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Value: "default",
 		},
 		mcnflag.StringFlag{
-			EnvVar: "KVM_BOOT2DOCKER_URL",
+			EnvVar: "QEMU_BOOT2DOCKER_URL",
 			Name:   "qemu-boot2docker-url",
 			Usage:  "The URL of the boot2docker image. Defaults to the latest available version",
 			Value:  "",
@@ -94,7 +94,7 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Value: "threads",
 		},
 		mcnflag.StringFlag{
-			EnvVar: "KVM_SSH_USER",
+			EnvVar: "QEMU_SSH_USER",
 			Name:   "qemu-ssh-user",
 			Usage:  "SSH username",
 			Value:  defaultSSHUser,
