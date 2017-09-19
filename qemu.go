@@ -84,6 +84,11 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Value:  "",
 		},
 		mcnflag.StringFlag{
+			Name:  "qemu-network-bridge",
+			Usage: "Name of the virtual bridge to be used for networking (currently unused)",
+			Value: "virbr0",
+		},
+		mcnflag.StringFlag{
 			Name:  "qemu-cache-mode",
 			Usage: "Disk cache mode: default, none, writethrough, writeback, directsync, or unsafe",
 			Value: "default",
