@@ -37,6 +37,7 @@ type Driver struct {
 	Memory           int
 	DiskSize         int
 	CPU              int
+	Program          string
 	Network          string
 	PrivateNetwork   string
 	Boot2DockerURL   string
@@ -70,6 +71,11 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Name:  "qemu-cpu-count",
 			Usage: "Number of CPUs",
 			Value: 1,
+		},
+		mcnflag.StringFlag{
+			Name:  "qemu-program",
+			Usage: "Name of program to run",
+			Value: "qemu-system-x86_64",
 		},
 		// TODO - support for multiple networks
 		mcnflag.StringFlag{
@@ -163,6 +169,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.Memory = flags.Int("qemu-memory")
 	d.DiskSize = flags.Int("qemu-disk-size")
 	d.CPU = flags.Int("qemu-cpu-count")
+	d.Program = flags.String("qemu-program")
 	d.Network = flags.String("qemu-network")
 	d.Boot2DockerURL = flags.String("qemu-boot2docker-url")
 	d.NetworkBridge = flags.String("qemu-network-bridge")
@@ -343,11 +350,11 @@ func (d *Driver) Start() error {
 	// last argument is always the name of the disk image
 	startCmd = append(startCmd, d.diskPath())
 
-	if stdout, stderr, err := cmdOutErr("qemu-system-x86_64", startCmd...); err != nil {
+	if stdout, stderr, err := cmdOutErr(d.Program, startCmd...); err != nil {
 		fmt.Printf("OUTPUT: %s\n", stdout)
 		fmt.Printf("ERROR: %s\n", stderr)
 		return err
-		//if err := cmdStart("qemu-system-x86_64", startCmd...); err != nil {
+		//if err := cmdStart(d.Program, startCmd...); err != nil {
 		//	return err
 	}
 	log.Infof("Waiting for VM to start (ssh -p %d docker@localhost)...", d.SSHPort)
