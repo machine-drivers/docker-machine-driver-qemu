@@ -20,7 +20,10 @@ Options:
  - `--qemu-disk-size`: Size of disk for the host in MB. Default: `20000`
  - `--qemu-memory`: Size of memory for the host in MB. Default: `1024`
  - `--qemu-program` : Name of the qemu program to run. Default: `qemu-system-x86_64`
- - `--qemu-network-bridge`: Name of the virtual bridge to be used for networking. Default: `virbr0`
+ - `--qemu-network`: Networking to be used: user, tap or bridge. Default: `user`
+ - `--qemu-network-interface`: Name of the network interface to be used for networking. Default: `tap0`
+ - `--qemu-network-address`: IP of the network address to be used for networking.
+ - `--qemu-network-bridge`: Name of the network bridge to be used for networking. Default: `br0`
 
 The `--qemu-boot2docker-url` flag takes a few different forms.  By
 default, if no value is specified for this flag, Machine will check locally for

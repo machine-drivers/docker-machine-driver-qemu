@@ -41,6 +41,8 @@ type Driver struct {
 	Network          string
 	PrivateNetwork   string
 	Boot2DockerURL   string
+	NetworkInterface string
+	NetworkAddress   string
 	NetworkBridge    string
 	CaCertPath       string
 	PrivateKeyPath   string
@@ -77,11 +79,10 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Usage: "Name of program to run",
 			Value: "qemu-system-x86_64",
 		},
-		// TODO - support for multiple networks
 		mcnflag.StringFlag{
 			Name:  "qemu-network",
-			Usage: "Name of network to connect to",
-			Value: "default",
+			Usage: "Name of network to connect to (user, tap, bridge)",
+			Value: "user",
 		},
 		mcnflag.StringFlag{
 			EnvVar: "QEMU_BOOT2DOCKER_URL",
@@ -90,9 +91,18 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Value:  "",
 		},
 		mcnflag.StringFlag{
+			Name:  "qemu-network-interface",
+			Usage: "Name of the network interface to be used for networking (for tap)",
+			Value: "tap0",
+		},
+		mcnflag.StringFlag{
+			Name:  "qemu-network-address",
+			Usage: "IP of the network adress to be used for networking (for tap)",
+		},
+		mcnflag.StringFlag{
 			Name:  "qemu-network-bridge",
-			Usage: "Name of the virtual bridge to be used for networking (currently unused)",
-			Value: "virbr0",
+			Usage: "Name of the network bridge to be used for networking (for bridge)",
+			Value: "br0",
 		},
 		mcnflag.StringFlag{
 			Name:  "qemu-cache-mode",
@@ -172,6 +182,8 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.Program = flags.String("qemu-program")
 	d.Network = flags.String("qemu-network")
 	d.Boot2DockerURL = flags.String("qemu-boot2docker-url")
+	d.NetworkInterface = flags.String("qemu-network-interface")
+	d.NetworkAddress = flags.String("qemu-network-address")
 	d.NetworkBridge = flags.String("qemu-network-bridge")
 	d.CacheMode = flags.String("qemu-cache-mode")
 	d.IOMode = flags.String("qemu-io-mode")
@@ -218,7 +230,10 @@ func NewDriver(hostName, storePath string) drivers.Driver {
 }
 
 func (d *Driver) GetIP() (string, error) {
-	return "127.0.0.1", nil
+	if (d.Network == "user") {
+		return "127.0.0.1", nil
+	}
+	return d.NetworkAddress, nil
 }
 
 func (d *Driver) GetPort() (int, error) {
@@ -253,13 +268,15 @@ func (d *Driver) PreCreateCheck() error {
 
 func (d *Driver) Create() error {
 	var err error
-	d.SSHPort, err = getAvailableTCPPort()
-	if err != nil {
-		return err
-	}
-	d.EnginePort, err = getAvailableTCPPort()
-	if err != nil {
-		return err
+	if (d.Network == "user") {
+		d.SSHPort, err = getAvailableTCPPort()
+		if err != nil {
+			return err
+		}
+		d.EnginePort, err = getAvailableTCPPort()
+		if err != nil {
+			return err
+		}
 	}
 	b2dutils := mcnutils.NewB2dUtils(d.StorePath)
 	if err := b2dutils.CopyIsoToMachineDir(d.Boot2DockerURL, d.MachineName); err != nil {
@@ -326,15 +343,24 @@ func (d *Driver) Start() error {
 		"-qmp", fmt.Sprintf("unix:%s,server,nowait", d.monitorPath()),
 	}
 
-	startCmd = append(startCmd,
-		//		"-netdev", "user,id=network0",
-		//		"-device", "virtio-net,netdev=network0",
-		//		"-netdev", fmt.Sprintf("bridge,id=network1,br=%s", d.NetworkBridge),
-		//		"-redir", fmt.Sprintf("tcp:%d::22", d.SSHPort),
-		//		"-device", "virtio-net,netdev=network1",
-		"-net", "nic,vlan=0,model=virtio",
-		"-net", fmt.Sprintf("user,vlan=0,hostfwd=tcp::%d-:22,hostfwd=tcp::%d-:2376,hostname=%s", d.SSHPort, d.EnginePort, d.GetMachineName()),
-	)
+	if (d.Network == "user") {
+		startCmd = append(startCmd,
+			"-net", "nic,vlan=0,model=virtio",
+			"-net", fmt.Sprintf("user,vlan=0,hostfwd=tcp::%d-:22,hostfwd=tcp::%d-:2376,hostname=%s", d.SSHPort, d.EnginePort, d.GetMachineName()),
+		)
+	} else if (d.Network == "tap") {
+		startCmd = append(startCmd,
+			"-net", "nic,vlan=0,model=virtio",
+			"-net", fmt.Sprintf("tap,vlan=0,ifname=%s,script=no,downscript=no,hostname=%s", d.NetworkInterface, d.GetMachineName()),
+		)
+	} else if (d.Network == "bridge") {
+		startCmd = append(startCmd,
+			"-net", "nic,vlan=0,model=virtio",
+			"-net", fmt.Sprintf("bridge,vlan=0,br=%s,hostname=%s", d.NetworkBridge, d.GetMachineName()),
+		)
+	} else {
+		log.Errorf("Unknown network: %s", d.Network)
+	}
 
 	startCmd = append(startCmd, "-daemonize")
 
