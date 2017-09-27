@@ -324,6 +324,9 @@ func (d *Driver) Start() error {
 		"-boot", "d",
 		"-cdrom", filepath.Join(machineDir, "boot2docker.iso"),
 		"-qmp", fmt.Sprintf("unix:%s,server,nowait", d.monitorPath()),
+	}
+
+	startCmd = append(startCmd,
 		//		"-netdev", "user,id=network0",
 		//		"-device", "virtio-net,netdev=network0",
 		//		"-netdev", fmt.Sprintf("bridge,id=network1,br=%s", d.NetworkBridge),
@@ -331,8 +334,9 @@ func (d *Driver) Start() error {
 		//		"-device", "virtio-net,netdev=network1",
 		"-net", "nic,vlan=0,model=virtio",
 		"-net", fmt.Sprintf("user,vlan=0,hostfwd=tcp::%d-:22,hostfwd=tcp::%d-:2376,hostname=%s", d.SSHPort, d.EnginePort, d.GetMachineName()),
-		"-daemonize",
-	}
+	)
+
+	startCmd = append(startCmd, "-daemonize")
 
 	// other options
 	// "-enable-kvm" if its available
