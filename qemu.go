@@ -526,55 +526,44 @@ func (d *Driver) generateDiskImage(size int) error {
 	if err := tw.WriteHeader(file); err != nil {
 		return err
 	}
-	log.Infof("1")
 	if _, err := tw.Write([]byte(magicString)); err != nil {
 		return err
 	}
 	// .ssh/key.pub => authorized_keys
-	log.Infof("2")
 	file = &tar.Header{Name: ".ssh", Typeflag: tar.TypeDir, Mode: 0700}
 	if err := tw.WriteHeader(file); err != nil {
 		return err
 	}
-	log.Infof("3")
 	pubKey, err := ioutil.ReadFile(d.publicSSHKeyPath())
 	if err != nil {
 		return err
 	}
-	log.Infof("4")
 	file = &tar.Header{Name: ".ssh/authorized_keys", Size: int64(len(pubKey)), Mode: 0644}
 	if err := tw.WriteHeader(file); err != nil {
 		return err
 	}
-	log.Infof("5")
 	if _, err := tw.Write([]byte(pubKey)); err != nil {
 		return err
 	}
-	log.Infof("6")
 	file = &tar.Header{Name: ".ssh/authorized_keys2", Size: int64(len(pubKey)), Mode: 0644}
 	if err := tw.WriteHeader(file); err != nil {
 		return err
 	}
-	log.Infof("7")
 	if _, err := tw.Write([]byte(pubKey)); err != nil {
 		return err
 	}
-	log.Infof("8")
 	if err := tw.Close(); err != nil {
 		return err
 	}
-	log.Infof("9")
 	rawFile := fmt.Sprintf("%s.raw", d.diskPath())
 	if err := ioutil.WriteFile(rawFile, buf.Bytes(), 0644); err != nil {
 		return nil
 	}
-	log.Infof("10")
 	if stdout, stderr, err := cmdOutErr("qemu-img", "convert", "-f", "raw", "-O", "qcow2", rawFile, d.diskPath()); err != nil {
 		fmt.Printf("OUTPUT: %s\n", stdout)
 		fmt.Printf("ERROR: %s\n", stderr)
 		return err
 	}
-	log.Infof("11")
 	if stdout, stderr, err := cmdOutErr("qemu-img", "resize", d.diskPath(), fmt.Sprintf("+%dMB", size)); err != nil {
 		fmt.Printf("OUTPUT: %s\n", stdout)
 		fmt.Printf("ERROR: %s\n", stderr)
@@ -588,27 +577,22 @@ func (d *Driver) generateDiskImage(size int) error {
 func (d *Driver) generateUserdataDisk(userdataFile string) (string, error) {
 	// Start with virtio, add ISO & FAT format later
 	// Start with local file, add wget/fetct URL? (or if URL, use datasource..)
-	log.Infof("1")
 	userdata, err := ioutil.ReadFile(userdataFile)
 	if err != nil {
 		return "", err
 	}
 
-	log.Infof("2")
 	machineDir := filepath.Join(d.StorePath, "machines", d.GetMachineName())
 	ccRoot := filepath.Join(machineDir, "cloud-config")
 	os.MkdirAll(ccRoot, 0755)
 
-	log.Infof("3")
 	userDataDir := filepath.Join(ccRoot, "openstack/latest")
 	os.MkdirAll(userDataDir, 0755)
 
-	log.Infof("4")
 	writeFile := filepath.Join(userDataDir, "user_data")
 	if err := ioutil.WriteFile(writeFile, userdata, 0644); err != nil {
 		return "", err
 	}
-	log.Infof("5")
 
 	return ccRoot, nil
 
