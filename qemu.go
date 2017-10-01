@@ -351,12 +351,12 @@ func (d *Driver) Start() error {
 	} else if (d.Network == "tap") {
 		startCmd = append(startCmd,
 			"-net", "nic,vlan=0,model=virtio",
-			"-net", fmt.Sprintf("tap,vlan=0,ifname=%s,script=no,downscript=no,hostname=%s", d.NetworkInterface, d.GetMachineName()),
+			"-net", fmt.Sprintf("tap,vlan=0,ifname=%s,script=no,downscript=no", d.NetworkInterface),
 		)
 	} else if (d.Network == "bridge") {
 		startCmd = append(startCmd,
 			"-net", "nic,vlan=0,model=virtio",
-			"-net", fmt.Sprintf("bridge,vlan=0,br=%s,hostname=%s", d.NetworkBridge, d.GetMachineName()),
+			"-net", fmt.Sprintf("bridge,vlan=0,br=%s", d.NetworkBridge),
 		)
 	} else {
 		log.Errorf("Unknown network: %s", d.Network)
