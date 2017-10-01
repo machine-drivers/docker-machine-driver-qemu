@@ -31,8 +31,8 @@ const (
 
 type Driver struct {
 	*drivers.BaseDriver
-	EnginePort       int
-	FirstQuery       bool
+	EnginePort int
+	FirstQuery bool
 
 	Memory           int
 	DiskSize         int
@@ -211,7 +211,7 @@ func (d *Driver) GetURL() (string, error) {
 		return "", nil
 	}
 	port, err := d.GetEnginePort()
-	if (d.FirstQuery) {
+	if d.FirstQuery {
 		d.FirstQuery = false
 		port = 2376
 	}
@@ -230,7 +230,7 @@ func NewDriver(hostName, storePath string) drivers.Driver {
 }
 
 func (d *Driver) GetIP() (string, error) {
-	if (d.Network == "user") {
+	if d.Network == "user" {
 		return "127.0.0.1", nil
 	}
 	return d.NetworkAddress, nil
@@ -268,7 +268,7 @@ func (d *Driver) PreCreateCheck() error {
 
 func (d *Driver) Create() error {
 	var err error
-	if (d.Network == "user") {
+	if d.Network == "user" {
 		d.SSHPort, err = getAvailableTCPPort()
 		if err != nil {
 			return err
@@ -343,17 +343,17 @@ func (d *Driver) Start() error {
 		"-qmp", fmt.Sprintf("unix:%s,server,nowait", d.monitorPath()),
 	}
 
-	if (d.Network == "user") {
+	if d.Network == "user" {
 		startCmd = append(startCmd,
 			"-net", "nic,vlan=0,model=virtio",
 			"-net", fmt.Sprintf("user,vlan=0,hostfwd=tcp::%d-:22,hostfwd=tcp::%d-:2376,hostname=%s", d.SSHPort, d.EnginePort, d.GetMachineName()),
 		)
-	} else if (d.Network == "tap") {
+	} else if d.Network == "tap" {
 		startCmd = append(startCmd,
 			"-net", "nic,vlan=0,model=virtio",
 			"-net", fmt.Sprintf("tap,vlan=0,ifname=%s,script=no,downscript=no", d.NetworkInterface),
 		)
-	} else if (d.Network == "bridge") {
+	} else if d.Network == "bridge" {
 		startCmd = append(startCmd,
 			"-net", "nic,vlan=0,model=virtio",
 			"-net", fmt.Sprintf("bridge,vlan=0,br=%s", d.NetworkBridge),
