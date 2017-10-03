@@ -301,10 +301,7 @@ func (d *Driver) Create() error {
 	}
 
 	log.Infof("Starting QEMU VM...")
-	if err := d.Start(); err != nil {
-		return err
-	}
-	return nil
+	return d.Start()
 }
 
 func getAvailableTCPPort() (int, error) {
