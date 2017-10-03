@@ -39,6 +39,7 @@ type Driver struct {
 	DiskSize         int
 	CPU              int
 	Program          string
+	Nographic        bool
 	Network          string
 	PrivateNetwork   string
 	Boot2DockerURL   string
@@ -79,6 +80,10 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Name:  "qemu-program",
 			Usage: "Name of program to run",
 			Value: "qemu-system-x86_64",
+		},
+		mcnflag.BoolFlag{
+			Name:  "qemu-nographic",
+			Usage: "Use -nographic instead of -display none",
 		},
 		mcnflag.StringFlag{
 			Name:  "qemu-network",
@@ -181,6 +186,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.DiskSize = flags.Int("qemu-disk-size")
 	d.CPU = flags.Int("qemu-cpu-count")
 	d.Program = flags.String("qemu-program")
+	d.Nographic = flags.Bool("qemu-nographic")
 	d.Network = flags.String("qemu-network")
 	d.Boot2DockerURL = flags.String("qemu-boot2docker-url")
 	d.NetworkInterface = flags.String("qemu-network-interface")
@@ -361,9 +367,15 @@ func (d *Driver) Start() error {
 
 	var startCmd []string
 
-	startCmd = append(startCmd,
-		"-display", "none",
-	)
+	if d.Nographic {
+		startCmd = append(startCmd,
+			"-nographic",
+		)
+	} else {
+		startCmd = append(startCmd,
+			"-display", "none",
+		)
+	}
 
 	startCmd = append(startCmd,
 		"-m", fmt.Sprintf("%d", d.Memory),
