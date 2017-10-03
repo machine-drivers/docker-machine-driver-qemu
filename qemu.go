@@ -359,15 +359,20 @@ func (d *Driver) Start() error {
 	// fmt.Printf("Init qemu %s\n", i.VM)
 	machineDir := filepath.Join(d.StorePath, "machines", d.GetMachineName())
 
-	startCmd := []string{
+	var startCmd []string
+
+	startCmd = append(startCmd,
 		"-display", "none",
+	)
+
+	startCmd = append(startCmd,
 		"-m", fmt.Sprintf("%d", d.Memory),
 		"-smp", fmt.Sprintf("%d", d.CPU),
 		"-boot", "d",
 		"-cdrom", filepath.Join(machineDir, "boot2docker.iso"),
 		"-qmp", fmt.Sprintf("unix:%s,server,nowait", d.monitorPath()),
 		"-pidfile", d.pidfilePath(),
-	}
+	)
 
 	if d.Network == "user" {
 		startCmd = append(startCmd,
