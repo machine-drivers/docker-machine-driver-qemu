@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/docker/machine/libmachine/drivers"
@@ -202,6 +203,9 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 
 func (d *Driver) GetURL() (string, error) {
 	log.Debugf("GetURL called")
+	if _, err := os.Stat(d.pidfilePath()); err != nil {
+		return "", nil
+	}
 	ip, err := d.GetIP()
 	if err != nil {
 		log.Warnf("Failed to get IP: %s", err)
@@ -240,8 +244,32 @@ func (d *Driver) GetPort() (int, error) {
 	return d.EnginePort, nil
 }
 
+func checkPid(pid int) error {
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	return process.Signal(syscall.Signal(0))
+}
+
 func (d *Driver) GetState() (state.State, error) {
 
+	if _, err := os.Stat(d.pidfilePath()); err != nil {
+		return state.Stopped, nil
+	}
+	p, err := ioutil.ReadFile(d.pidfilePath())
+	if err != nil {
+		return state.Error, err
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(p)))
+	if err != nil {
+		return state.Error, err
+	}
+	if err := checkPid(pid); err != nil {
+		// No pid, remove pidfile
+		os.Remove(d.pidfilePath())
+		return state.Stopped, nil
+	}
 	ret, err := d.RunQMPCommand("query-status")
 	if err != nil {
 		return state.Error, err
@@ -338,6 +366,7 @@ func (d *Driver) Start() error {
 		"-boot", "d",
 		"-cdrom", filepath.Join(machineDir, "boot2docker.iso"),
 		"-qmp", fmt.Sprintf("unix:%s,server,nowait", d.monitorPath()),
+		"-pidfile", d.pidfilePath(),
 	}
 
 	if d.Network == "user" {
@@ -507,6 +536,11 @@ func (d *Driver) diskPath() string {
 func (d *Driver) monitorPath() string {
 	machineDir := filepath.Join(d.StorePath, "machines", d.GetMachineName())
 	return filepath.Join(machineDir, "monitor")
+}
+
+func (d *Driver) pidfilePath() string {
+	machineDir := filepath.Join(d.StorePath, "machines", d.GetMachineName())
+	return filepath.Join(machineDir, "qemu.pid")
 }
 
 // Make a boot2docker VM disk image.
