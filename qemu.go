@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"os"
 	"os/exec"
@@ -58,6 +59,7 @@ type Driver struct {
 	vmLoaded        bool
 	UserDataFile    string
 	CloudConfigRoot string
+	LocalPorts      string
 }
 
 func (d *Driver) GetCreateFlags() []mcnflag.Flag {
@@ -136,6 +138,11 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Name:  "qemu-userdata",
 			Usage: "cloud-config userdata file",
 		},
+		mcnflag.StringFlag{
+			EnvVar: "QEMU_LOCALPORTS",
+			Name:   "qemu-localports",
+			Usage:  "Port range to bind local SSH and engine ports",
+		},
 		/* Not yet implemented
 		mcnflag.Flag{
 			Name:  "qemu-no-share",
@@ -200,6 +207,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.SSHUser = flags.String("qemu-ssh-user")
 	d.UserDataFile = flags.String("qemu-userdata")
 	d.EnginePort = 2376
+	d.LocalPorts = flags.String("qemu-localports")
 	d.FirstQuery = true
 	d.SSHPort = 22
 	d.DiskPath = d.ResolveStorePath(fmt.Sprintf("%s.img", d.MachineName))
@@ -303,12 +311,18 @@ func (d *Driver) PreCreateCheck() error {
 func (d *Driver) Create() error {
 	var err error
 	if d.Network == "user" {
-		d.SSHPort, err = getAvailableTCPPort()
+		minPort, maxPort, err := parsePortRange(d.LocalPorts)
+		log.Debugf("port range: %d -> %d", minPort, maxPort)
 		if err != nil {
 			return err
 		}
+		d.SSHPort, err = getAvailableTCPPortFromRange(minPort, maxPort)
+		if err != nil {
+			return err
+		}
+
 		for {
-			d.EnginePort, err = getAvailableTCPPort()
+			d.EnginePort, err = getAvailableTCPPortFromRange(minPort, maxPort)
 			if err != nil {
 				return err
 			}
@@ -345,12 +359,55 @@ func (d *Driver) Create() error {
 	return d.Start()
 }
 
-func getAvailableTCPPort() (int, error) {
+func parsePortRange(rawPortRange string) (int, int, error) {
+	if rawPortRange == "" {
+		return 0, 65535, nil
+	}
+
+	portRange := strings.Split(rawPortRange, "-")
+
+	minPort, err := strconv.Atoi(portRange[0])
+	if err != nil {
+		return 0, 0, fmt.Errorf("Invalid port range")
+	}
+	maxPort, err := strconv.Atoi(portRange[1])
+	if err != nil {
+		return 0, 0, fmt.Errorf("Invalid port range")
+	}
+
+	if maxPort < minPort {
+		return 0, 0, fmt.Errorf("Invalid port range")
+	}
+
+	if maxPort-minPort < 2 {
+		return 0, 0, fmt.Errorf("Port range must be minimum 2 ports")
+	}
+
+	return minPort, maxPort, nil
+}
+
+func getRandomPortNumberInRange(min int, max int) int {
+	return rand.Intn(max-min) + min
+}
+
+func getAvailableTCPPortFromRange(minPort int, maxPort int) (int, error) {
 	port := 0
 	for i := 0; i <= 10; i++ {
-		ln, err := net.Listen("tcp4", "127.0.0.1:0")
-		if err != nil {
-			return 0, err
+		var ln net.Listener
+		var err error
+		if minPort == 0 && maxPort == 65535 {
+			ln, err = net.Listen("tcp4", "127.0.0.1:0")
+			if err != nil {
+				return 0, err
+			}
+		} else {
+			port = getRandomPortNumberInRange(minPort, maxPort)
+			log.Debugf("testing port: %d", port)
+			ln, err = net.Listen("tcp4", fmt.Sprintf("127.0.0.1:%d", port))
+			if err != nil {
+				log.Debugf("port already in use: %d", port)
+				continue
+			}
 		}
 		defer ln.Close()
 		addr := ln.Addr().String()
