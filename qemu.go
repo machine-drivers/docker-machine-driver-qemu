@@ -380,8 +380,11 @@ func (d *Driver) Start() error {
 	startCmd = append(startCmd,
 		"-m", fmt.Sprintf("%d", d.Memory),
 		"-smp", fmt.Sprintf("%d", d.CPU),
-		"-boot", "d",
-		"-cdrom", filepath.Join(machineDir, "boot2docker.iso"),
+		"-boot", "d")
+	var isoPath = filepath.Join(machineDir, isoFilename)
+	startCmd = append(startCmd,
+		"-cdrom", isoPath)
+	startCmd = append(startCmd,
 		"-qmp", fmt.Sprintf("unix:%s,server,nowait", d.monitorPath()),
 		"-pidfile", d.pidfilePath(),
 	)
