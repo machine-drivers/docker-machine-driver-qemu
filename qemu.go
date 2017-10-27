@@ -40,6 +40,7 @@ type Driver struct {
 	CPU              int
 	Program          string
 	Nographic        bool
+	VirtioDrives     bool
 	Network          string
 	PrivateNetwork   string
 	Boot2DockerURL   string
@@ -84,6 +85,11 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 		mcnflag.BoolFlag{
 			Name:  "qemu-nographic",
 			Usage: "Use -nographic instead of -display none",
+		},
+		mcnflag.BoolFlag{
+			EnvVar: "QEMU_VIRTIO_DRIVES",
+			Name:   "qemu-virtio-drives",
+			Usage:  "Use virtio for drives (cdrom and disk)",
 		},
 		mcnflag.StringFlag{
 			Name:  "qemu-network",
@@ -187,6 +193,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.CPU = flags.Int("qemu-cpu-count")
 	d.Program = flags.String("qemu-program")
 	d.Nographic = flags.Bool("qemu-nographic")
+	d.VirtioDrives = flags.Bool("qemu-virtio-drives")
 	d.Network = flags.String("qemu-network")
 	d.Boot2DockerURL = flags.String("qemu-boot2docker-url")
 	d.NetworkInterface = flags.String("qemu-network-interface")
@@ -382,8 +389,13 @@ func (d *Driver) Start() error {
 		"-smp", fmt.Sprintf("%d", d.CPU),
 		"-boot", "d")
 	var isoPath = filepath.Join(machineDir, isoFilename)
-	startCmd = append(startCmd,
-		"-cdrom", isoPath)
+	if d.VirtioDrives {
+		startCmd = append(startCmd,
+			"-drive", fmt.Sprintf("file=%s,index=2,media=cdrom,if=virtio", isoPath))
+	} else {
+		startCmd = append(startCmd,
+			"-cdrom", isoPath)
+	}
 	startCmd = append(startCmd,
 		"-qmp", fmt.Sprintf("unix:%s,server,nowait", d.monitorPath()),
 		"-pidfile", d.pidfilePath(),
@@ -423,8 +435,13 @@ func (d *Driver) Start() error {
 		startCmd = append(startCmd, "-device", "virtio-9p-pci,id=fs0,fsdev=fsdev0,mount_tag=config-2")
 	}
 
-	// last argument is always the name of the disk image
-	startCmd = append(startCmd, d.diskPath())
+	if d.VirtioDrives {
+		startCmd = append(startCmd,
+			"-drive", fmt.Sprintf("file=%s,index=0,media=disk,if=virtio", d.diskPath()))
+	} else {
+		// last argument is always the name of the disk image
+		startCmd = append(startCmd, d.diskPath())
+	}
 
 	if stdout, stderr, err := cmdOutErr(d.Program, startCmd...); err != nil {
 		fmt.Printf("OUTPUT: %s\n", stdout)

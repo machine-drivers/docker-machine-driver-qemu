@@ -21,6 +21,7 @@ Options:
  - `--qemu-memory`: Size of memory for the host in MB. Default: `1024`
  - `--qemu-program` : Name of the qemu program to run. Default: `qemu-system-x86_64`
  - `--qemu-nographic` : Use -nographic instead of -display none. Default: false
+ - `--qemu-virtio-drives` : Use virtio for drives (cdrom and disk). Default: false
  - `--qemu-network`: Networking to be used: user, tap or bridge. Default: `user`
  - `--qemu-network-interface`: Name of the network interface to be used for networking. Default: `tap0`
  - `--qemu-network-address`: IP of the network address to be used for networking.
