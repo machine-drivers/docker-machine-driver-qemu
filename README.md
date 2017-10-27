@@ -19,6 +19,7 @@ Options:
  - `--qemu-boot2docker-url`: The URL of the boot2docker image. Defaults to the latest available version.
  - `--qemu-disk-size`: Size of disk for the host in MB. Default: `20000`
  - `--qemu-memory`: Size of memory for the host in MB. Default: `1024`
+ - `--qemu-cpu-count`: Number of CPUs. Default: `1`
  - `--qemu-program` : Name of the qemu program to run. Default: `qemu-system-x86_64`
  - `--qemu-nographic` : Use -nographic instead of -display none. Default: false
  - `--qemu-virtio-drives` : Use virtio for drives (cdrom and disk). Default: false
