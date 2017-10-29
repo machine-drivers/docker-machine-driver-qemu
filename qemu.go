@@ -506,9 +506,11 @@ func (d *Driver) Remove() error {
 			return err
 		}
 	}
-	_, err = d.RunQMPCommand("quit")
-	if err != nil {
-		return err
+	if s != state.Stopped {
+		_, err = d.RunQMPCommand("quit")
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
