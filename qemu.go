@@ -166,14 +166,6 @@ func (d *Driver) GetSSHPort() (int, error) {
 	return d.SSHPort, nil
 }
 
-func (d *Driver) GetEnginePort() (int, error) {
-	if d.EnginePort == 0 {
-		d.EnginePort = 2376
-	}
-
-	return d.EnginePort, nil
-}
-
 func (d *Driver) GetSSHUsername() string {
 	if d.SSHUser == "" {
 		d.SSHUser = "docker"
@@ -227,11 +219,7 @@ func (d *Driver) GetURL() (string, error) {
 	if ip == "" {
 		return "", nil
 	}
-	port, err := d.GetEnginePort()
-	if d.FirstQuery {
-		d.FirstQuery = false
-		port = 2376
-	}
+	port := d.GetPort()
 	return fmt.Sprintf("tcp://%s:%d", ip, port), nil
 }
 
@@ -253,8 +241,13 @@ func (d *Driver) GetIP() (string, error) {
 	return d.NetworkAddress, nil
 }
 
-func (d *Driver) GetPort() (int, error) {
-	return d.EnginePort, nil
+func (d *Driver) GetPort() int {
+	var port = d.EnginePort
+	if d.FirstQuery {
+		d.FirstQuery = false
+		port = 2376
+	}
+	return port
 }
 
 func checkPid(pid int) error {
