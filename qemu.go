@@ -307,9 +307,16 @@ func (d *Driver) Create() error {
 		if err != nil {
 			return err
 		}
-		d.EnginePort, err = getAvailableTCPPort()
-		if err != nil {
-			return err
+		for {
+			d.EnginePort, err = getAvailableTCPPort()
+			if err != nil {
+				return err
+			}
+			if d.EnginePort == d.SSHPort {
+				// can't have both on same port
+				continue
+			}
+			break
 		}
 	}
 	b2dutils := mcnutils.NewB2dUtils(d.StorePath)
