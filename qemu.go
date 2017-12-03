@@ -40,6 +40,8 @@ type Driver struct {
 	DiskSize         int
 	CPU              int
 	Program          string
+	Display          bool
+	DisplayType      string
 	Nographic        bool
 	VirtioDrives     bool
 	Network          string
@@ -83,6 +85,15 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Name:  "qemu-program",
 			Usage: "Name of program to run",
 			Value: "qemu-system-x86_64",
+		},
+		mcnflag.BoolFlag{
+			Name:  "qemu-display",
+			Usage: "Display video output",
+		},
+		mcnflag.StringFlag{
+			EnvVar: "QEMU_DISPLAY_TYPE",
+			Name:   "qemu-display-type",
+			Usage:  "Select type of display",
 		},
 		mcnflag.BoolFlag{
 			Name:  "qemu-nographic",
@@ -191,6 +202,8 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.DiskSize = flags.Int("qemu-disk-size")
 	d.CPU = flags.Int("qemu-cpu-count")
 	d.Program = flags.String("qemu-program")
+	d.Display = flags.Bool("qemu-display")
+	d.DisplayType = flags.String("qemu-display-type")
 	d.Nographic = flags.Bool("qemu-nographic")
 	d.VirtioDrives = flags.Bool("qemu-virtio-drives")
 	d.Network = flags.String("qemu-network")
@@ -431,14 +444,24 @@ func (d *Driver) Start() error {
 
 	var startCmd []string
 
-	if d.Nographic {
-		startCmd = append(startCmd,
-			"-nographic",
-		)
+	if d.Display {
+		if d.DisplayType != "" {
+			startCmd = append(startCmd,
+				"-display", d.DisplayType,
+			)
+		} else {
+			// Use the default graphic output
+		}
 	} else {
-		startCmd = append(startCmd,
-			"-display", "none",
-		)
+		if d.Nographic {
+			startCmd = append(startCmd,
+				"-nographic",
+			)
+		} else {
+			startCmd = append(startCmd,
+				"-display", "none",
+			)
+		}
 	}
 
 	startCmd = append(startCmd,

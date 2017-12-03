@@ -24,6 +24,8 @@ Options:
  - `--qemu-memory`: Size of memory for the host in MB. Default: `1024`
  - `--qemu-cpu-count`: Number of CPUs. Default: `1`
  - `--qemu-program` : Name of the qemu program to run. Default: `qemu-system-x86_64`
+ - `--qemu-display` : Show the graphical display output to the user. Default: false
+ - `--qemu-display-type` : Select type of display to use (sdl/vnc=localhost:0/etc)
  - `--qemu-nographic` : Use -nographic instead of -display none. Default: false
  - `--qemu-virtio-drives` : Use virtio for drives (cdrom and disk). Default: false
  - `--qemu-network`: Networking to be used: user, tap or bridge. Default: `user`
