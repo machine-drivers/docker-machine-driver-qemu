@@ -19,6 +19,7 @@ This driver requires QEMU to be installed on your host.
 
 Options:
 
+ - `--qemu-accelerator`: The QEMU Accelerator to use. Defaults to none, but Linux will still use KVM if available.
  - `--qemu-boot2docker-url`: The URL of the boot2docker image. Defaults to the latest available version.
  - `--qemu-disk-size`: Size of disk for the host in MB. Default: `20000`
  - `--qemu-memory`: Size of memory for the host in MB. Default: `1024`

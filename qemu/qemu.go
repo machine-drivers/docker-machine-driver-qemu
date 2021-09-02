@@ -36,6 +36,7 @@ type Driver struct {
 	EnginePort int
 	FirstQuery bool
 
+	Accelerator      string
 	Memory           int
 	DiskSize         int
 	CPU              int
@@ -66,6 +67,10 @@ type Driver struct {
 
 func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 	return []mcnflag.Flag{
+		mcnflag.StringFlag{
+			Name:  "qemu-accelerator",
+			Usage: "Accelerator to use",
+		},
 		mcnflag.IntFlag{
 			Name:  "qemu-memory",
 			Usage: "Size of memory for host in MB",
@@ -198,6 +203,7 @@ func (d *Driver) DriverName() string {
 
 func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	log.Debugf("SetConfigFromFlags called")
+	d.Accelerator = flags.String("qemu-accelerator")
 	d.Memory = flags.Int("qemu-memory")
 	d.DiskSize = flags.Int("qemu-disk-size")
 	d.CPU = flags.Int("qemu-cpu-count")
@@ -443,6 +449,12 @@ func (d *Driver) Start() error {
 	machineDir := filepath.Join(d.StorePath, "machines", d.GetMachineName())
 
 	var startCmd []string
+
+	if d.Accelerator != "" {
+		startCmd = append(startCmd,
+			"-accel", d.Accelerator,
+		)
+	}
 
 	if d.Display {
 		if d.DisplayType != "" {
