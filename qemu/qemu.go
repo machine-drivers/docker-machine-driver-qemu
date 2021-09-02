@@ -56,13 +56,9 @@ type Driver struct {
 	DiskPath         string
 	CacheMode        string
 	IOMode           string
-	connectionString string
-	//	conn             *libvirt.Connect
-	//	VM               *libvirt.Domain
-	vmLoaded        bool
-	UserDataFile    string
-	CloudConfigRoot string
-	LocalPorts      string
+	UserDataFile     string
+	CloudConfigRoot  string
+	LocalPorts       string
 }
 
 func (d *Driver) GetCreateFlags() []mcnflag.Flag {
@@ -387,19 +383,19 @@ func parsePortRange(rawPortRange string) (int, int, error) {
 
 	minPort, err := strconv.Atoi(portRange[0])
 	if err != nil {
-		return 0, 0, fmt.Errorf("Invalid port range")
+		return 0, 0, fmt.Errorf("invalid port range")
 	}
 	maxPort, err := strconv.Atoi(portRange[1])
 	if err != nil {
-		return 0, 0, fmt.Errorf("Invalid port range")
+		return 0, 0, fmt.Errorf("invalid port range")
 	}
 
 	if maxPort < minPort {
-		return 0, 0, fmt.Errorf("Invalid port range")
+		return 0, 0, fmt.Errorf("invalid port range")
 	}
 
 	if maxPort-minPort < 2 {
-		return 0, 0, fmt.Errorf("Port range must be minimum 2 ports")
+		return 0, 0, fmt.Errorf("port range must be minimum 2 ports")
 	}
 
 	return minPort, maxPort, nil
@@ -461,8 +457,6 @@ func (d *Driver) Start() error {
 			startCmd = append(startCmd,
 				"-display", d.DisplayType,
 			)
-		} else {
-			// Use the default graphic output
 		}
 	} else {
 		if d.Nographic {
@@ -571,12 +565,6 @@ func cmdOutErr(cmdStr string, args ...string) (string, string, error) {
 		}
 	}
 	return stdout.String(), stderrStr, err
-}
-
-func cmdStart(cmdStr string, args ...string) error {
-	cmd := exec.Command(cmdStr, args...)
-	log.Debugf("executing: %v %v", cmdStr, strings.Join(args, " "))
-	return cmd.Start()
 }
 
 func (d *Driver) Stop() error {
