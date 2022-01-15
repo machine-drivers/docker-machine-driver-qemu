@@ -1,21 +1,98 @@
-# Docker machine qemu driver
+# [QEMU](http://www.qemu.org/) Driver Plugin for `docker-machine`
 
-I needed a non-libvirt qemu driver, so this is it.
+Please note that this is a fork of [CandySunPlus/docker-machine-driver-qemu](https://github.com/CandySunPlus/docker-machine-driver-qemu) which includes a commit for QEMU 6.x support.
 
+This repo is in turn just a fork of the original repo [machine-drivers/docker-machine-driver-qemu](https://github.com/machine-drivers/docker-machine-driver-qemu) which seems unmaintained as the last release was made in 2017 and PRs like the one by CandySunPlus have not been merged.
 
-from @SvenDowideit
+This fork aims to add installation instructions for future reference.
 
-Its initial use is going to be for running the [Rancher OS](https://github.com/rancher/os) tests, but maybe you'll find a use for it too.
+## Docker Engine Version
 
+Since this plugin uses the now deprecated [Boot2Docker(https://github.com/boot2docker/boot2docker) the version installed by default is the last released 
+before deprecation of said project which is 19.03.12.
 
-from @fventuri
+The project now recommends to instead install [Docker Desktop](https://www.docker.com/products/docker-desktop).
 
-#### QEMU
+`docker version` output when following the [installation Instructions](#installation-instructions):
+
+```
+Server: Docker Engine - Community
+ Engine:
+  Version:          19.03.12
+  API version:      1.40 (minimum version 1.12)
+  Go version:       go1.13.10
+  Git commit:       48a66213fe
+  Built:            Mon Jun 22 15:49:35 2020
+  OS/Arch:          linux/amd64
+  Experimental:     false
+ containerd:
+  Version:          v1.2.13
+  GitCommit:        7ad184331fa3e55e52b890ea95e65ba581ae3429
+ runc:
+  Version:          1.0.0-rc10
+  GitCommit:        dc9208a3303feef5b3839f4323d9beb36df0a9dd
+ docker-init:
+  Version:          0.18.0
+  GitCommit:        fec3683
+```
+
+## Installation Instructions
+
+These installation instructions should work on Linux as well as on macOS.
+
+Clone this repo to a location of choice and change into the cloned directory:
+
+```
+git clone https://github.com/totoroot/docker-machine-driver-qemu /tmp/docker-machine-driver-qemu && cd /tmp/docker-machine-driver-qemu
+```
+
+Make the binary of the plugin and copy it to a location in your PATH:
+
+```sh
+make default
+cp bin/docker-machine-driver-qemu /usr/local/bin/docker-machine-driver-qemu
+```
+
+Depending on your user's permissions chose you might need to copy it with elevated permissions:
+
+```sh
+sudo install /tmp/docker-machine-driver-qemu /usr/local/bin/docker-machine-driver-qemu
+```
+
+Verify that binary is in your PATH:
+
+```sh
+which docker-machine-driver-qemu
+```
+
+Note that the available arguments for `docker-machine` using the QEMU driver are listed [below](#qemu-options).
+ 
+Create a docker-machine VM named "qemu-default" with QEMU driver:
+
+```sh
+docker-machine create --driver=qemu qemu-default
+```
+
+Evaluate environment variables for VM:
+
+```sh
+eval $(docker-machine env qemu-default)
+```
+
+Verify `docker` works as it should:
+
+```sh
+docker version
+```
+
+## QEMU Options
 
 Create machines locally using [QEMU](http://www.qemu.org/).
 This driver requires QEMU to be installed on your host.
 
-    $ docker-machine create --driver=qemu qemu-test
+```sh
+docker-machine create --driver=qemu qemu-default
+```
 
 Options:
 

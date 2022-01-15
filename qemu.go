@@ -73,8 +73,8 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 		},
 		mcnflag.IntFlag{
 			Name:  "qemu-disk-size",
-			Usage: "Size of disk for host in MB",
-			Value: 20000,
+			Usage: "Size of disk for host in GB",
+			Value: 20,
 		},
 		mcnflag.IntFlag{
 			Name:  "qemu-cpu-count",
@@ -483,18 +483,15 @@ func (d *Driver) Start() error {
 
 	if d.Network == "user" {
 		startCmd = append(startCmd,
-			"-net", "nic,vlan=0,model=virtio",
-			"-net", fmt.Sprintf("user,vlan=0,hostfwd=tcp::%d-:22,hostfwd=tcp::%d-:2376,hostname=%s", d.SSHPort, d.EnginePort, d.GetMachineName()),
+			"-nic", fmt.Sprintf("user,model=virtio,hostfwd=tcp::%d-:22,hostfwd=tcp::%d-:2376,hostname=%s", d.SSHPort, d.EnginePort, d.GetMachineName()),
 		)
 	} else if d.Network == "tap" {
 		startCmd = append(startCmd,
-			"-net", "nic,vlan=0,model=virtio",
-			"-net", fmt.Sprintf("tap,vlan=0,ifname=%s,script=no,downscript=no", d.NetworkInterface),
+			"-nic", fmt.Sprintf("tap,model=virtio,ifname=%s,script=no,downscript=no", d.NetworkInterface),
 		)
 	} else if d.Network == "bridge" {
 		startCmd = append(startCmd,
-			"-net", "nic,vlan=0,model=virtio",
-			"-net", fmt.Sprintf("bridge,vlan=0,br=%s", d.NetworkBridge),
+			"-nic", fmt.Sprintf("bridge,model=virtio,br=%s", d.NetworkBridge),
 		)
 	} else {
 		log.Errorf("Unknown network: %s", d.Network)
@@ -714,7 +711,7 @@ func (d *Driver) generateDiskImage(size int) error {
 		fmt.Printf("ERROR: %s\n", stderr)
 		return err
 	}
-	if stdout, stderr, err := cmdOutErr("qemu-img", "resize", d.diskPath(), fmt.Sprintf("+%dM", size)); err != nil {
+	if stdout, stderr, err := cmdOutErr("qemu-img", "resize", d.diskPath(), fmt.Sprintf("+%dG", size)); err != nil {
 		fmt.Printf("OUTPUT: %s\n", stdout)
 		fmt.Printf("ERROR: %s\n", stderr)
 		return err
