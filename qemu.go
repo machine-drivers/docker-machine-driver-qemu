@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -40,6 +41,8 @@ type Driver struct {
 	DiskSize         int
 	CPU              int
 	Program          string
+	BIOS             bool
+	Firmware         string
 	Display          bool
 	DisplayType      string
 	Nographic        bool
@@ -65,6 +68,27 @@ type Driver struct {
 }
 
 func (d *Driver) GetCreateFlags() []mcnflag.Flag {
+	var qemu_arch string
+	switch runtime.GOARCH {
+	case "amd64":
+		qemu_arch = "x86_64"
+	case "arm64":
+		qemu_arch = "aarch64"
+	}
+	biosDefault := ""
+	uefiDefault := ""
+	var qemu_system string
+	var qemu_firmware string
+	switch qemu_arch {
+	case "x86_64":
+		biosDefault = " (default)"
+		qemu_system = "qemu-system-x86_64"
+		qemu_firmware = "/usr/share/OVMF/OVMF_CODE.fd"
+	case "aarch64":
+		uefiDefault = " (default)"
+		qemu_system = "qemu-system-aarch64"
+		qemu_firmware = "/usr/share/AAVMF/AAVMF_CODE.fd"
+	}
 	return []mcnflag.Flag{
 		mcnflag.IntFlag{
 			Name:  "qemu-memory",
@@ -84,7 +108,20 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 		mcnflag.StringFlag{
 			Name:  "qemu-program",
 			Usage: "Name of program to run",
-			Value: "qemu-system-x86_64",
+			Value: qemu_system,
+		},
+		mcnflag.BoolFlag{
+			Name:  "qemu-bios",
+			Usage: "Use BIOS" + biosDefault,
+		},
+		mcnflag.BoolFlag{
+			Name:  "qemu-uefi",
+			Usage: "Use UEFI" + uefiDefault,
+		},
+		mcnflag.StringFlag{
+			Name:  "qemu-firmware",
+			Usage: "Path to firmware file",
+			Value: qemu_firmware,
 		},
 		mcnflag.BoolFlag{
 			Name:  "qemu-display",
@@ -202,6 +239,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.DiskSize = flags.Int("qemu-disk-size")
 	d.CPU = flags.Int("qemu-cpu-count")
 	d.Program = flags.String("qemu-program")
+	d.Firmware = flags.String("qemu-firmware")
 	d.Display = flags.Bool("qemu-display")
 	d.DisplayType = flags.String("qemu-display-type")
 	d.Nographic = flags.Bool("qemu-nographic")
@@ -213,6 +251,12 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.NetworkBridge = flags.String("qemu-network-bridge")
 	d.CacheMode = flags.String("qemu-cache-mode")
 	d.IOMode = flags.String("qemu-io-mode")
+	if flags.Bool("qemu-bios") {
+		d.BIOS = true
+	}
+	if flags.Bool("qemu-uefi") {
+		d.BIOS = false
+	}
 
 	d.SwarmMaster = flags.Bool("swarm-master")
 	d.SwarmHost = flags.String("swarm-host")
@@ -246,6 +290,7 @@ func (d *Driver) GetURL() (string, error) {
 
 func NewDriver(hostName, storePath string) drivers.Driver {
 	return &Driver{
+		BIOS:           runtime.GOARCH != "arm64",
 		PrivateNetwork: privateNetworkName,
 		BaseDriver: &drivers.BaseDriver{
 			SSHUser:     defaultSSHUser,
@@ -443,6 +488,15 @@ func (d *Driver) Start() error {
 	machineDir := filepath.Join(d.StorePath, "machines", d.GetMachineName())
 
 	var startCmd []string
+
+	if !d.BIOS {
+		if d.Firmware != "" {
+			startCmd = append(startCmd,
+				"-drive", fmt.Sprintf("file=%s,readonly,format=raw,if=pflash", d.Firmware))
+		} else {
+			return fmt.Errorf("unknown firmware")
+		}
+	}
 
 	if d.Display {
 		if d.DisplayType != "" {
