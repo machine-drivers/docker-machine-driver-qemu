@@ -42,6 +42,8 @@ type Driver struct {
 	CPU              int
 	Program          string
 	BIOS             bool
+	CPUType          string
+	MachineType      string
 	Firmware         string
 	Display          bool
 	DisplayType      string
@@ -78,15 +80,21 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 	biosDefault := ""
 	uefiDefault := ""
 	var qemu_system string
+	var qemu_machine string
+	var qemu_cpu string
 	var qemu_firmware string
 	switch qemu_arch {
 	case "x86_64":
 		biosDefault = " (default)"
 		qemu_system = "qemu-system-x86_64"
+		qemu_machine = "" // default
+		qemu_cpu = ""     // default
 		qemu_firmware = "/usr/share/OVMF/OVMF_CODE.fd"
 	case "aarch64":
 		uefiDefault = " (default)"
 		qemu_system = "qemu-system-aarch64"
+		qemu_machine = "virt"
+		qemu_cpu = "cortex-a72"
 		qemu_firmware = "/usr/share/AAVMF/AAVMF_CODE.fd"
 	}
 	return []mcnflag.Flag{
@@ -109,6 +117,16 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Name:  "qemu-program",
 			Usage: "Name of program to run",
 			Value: qemu_system,
+		},
+		mcnflag.StringFlag{
+			Name:  "qemu-machine",
+			Usage: "Machine",
+			Value: qemu_machine,
+		},
+		mcnflag.StringFlag{
+			Name:  "qemu-cpu",
+			Usage: "CPU",
+			Value: qemu_cpu,
 		},
 		mcnflag.BoolFlag{
 			Name:  "qemu-bios",
@@ -239,6 +257,8 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.DiskSize = flags.Int("qemu-disk-size")
 	d.CPU = flags.Int("qemu-cpu-count")
 	d.Program = flags.String("qemu-program")
+	d.MachineType = flags.String("qemu-machine")
+	d.CPUType = flags.String("qemu-cpu")
 	d.Firmware = flags.String("qemu-firmware")
 	d.Display = flags.Bool("qemu-display")
 	d.DisplayType = flags.String("qemu-display-type")
@@ -488,6 +508,17 @@ func (d *Driver) Start() error {
 	machineDir := filepath.Join(d.StorePath, "machines", d.GetMachineName())
 
 	var startCmd []string
+
+	if d.MachineType != "" {
+		startCmd = append(startCmd,
+			"-M", d.MachineType,
+		)
+	}
+	if d.CPUType != "" {
+		startCmd = append(startCmd,
+			"-cpu", d.CPUType,
+		)
+	}
 
 	if !d.BIOS {
 		if d.Firmware != "" {
