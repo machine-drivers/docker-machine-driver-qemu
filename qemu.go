@@ -49,6 +49,7 @@ type Driver struct {
 	Boot2DockerURL   string
 	NetworkInterface string
 	NetworkAddress   string
+	NetworkSocket    string
 	NetworkBridge    string
 	CaCertPath       string
 	PrivateKeyPath   string
@@ -123,6 +124,11 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 		mcnflag.StringFlag{
 			Name:  "qemu-network-address",
 			Usage: "IP of the network adress to be used for networking (for tap)",
+		},
+		mcnflag.StringFlag{
+			Name:  "qemu-network-socket",
+			Usage: "Path of the network socket to be used for networking (for vde)",
+			Value: "tap0",
 		},
 		mcnflag.StringFlag{
 			Name:  "qemu-network-bridge",
@@ -210,6 +216,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.Boot2DockerURL = flags.String("qemu-boot2docker-url")
 	d.NetworkInterface = flags.String("qemu-network-interface")
 	d.NetworkAddress = flags.String("qemu-network-address")
+	d.NetworkSocket = flags.String("qemu-network-socket")
 	d.NetworkBridge = flags.String("qemu-network-bridge")
 	d.CacheMode = flags.String("qemu-cache-mode")
 	d.IOMode = flags.String("qemu-io-mode")
@@ -488,6 +495,10 @@ func (d *Driver) Start() error {
 	} else if d.Network == "tap" {
 		startCmd = append(startCmd,
 			"-nic", fmt.Sprintf("tap,model=virtio,ifname=%s,script=no,downscript=no", d.NetworkInterface),
+		)
+	} else if d.Network == "vde" {
+		startCmd = append(startCmd,
+			"-nic", fmt.Sprintf("vde,model=virtio,sock=%s", d.NetworkSocket),
 		)
 	} else if d.Network == "bridge" {
 		startCmd = append(startCmd,

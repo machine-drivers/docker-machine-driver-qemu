@@ -28,9 +28,10 @@ Options:
  - `--qemu-display-type` : Select type of display to use (sdl/vnc=localhost:0/etc)
  - `--qemu-nographic` : Use -nographic instead of -display none. Default: false
  - `--qemu-virtio-drives` : Use virtio for drives (cdrom and disk). Default: false
- - `--qemu-network`: Networking to be used: user, tap or bridge. Default: `user`
+ - `--qemu-network`: Networking to be used: user, tap, vde or bridge. Default: `user`
  - `--qemu-network-interface`: Name of the network interface to be used for networking. Default: `tap0`
  - `--qemu-network-address`: IP of the network address to be used for networking.
+ - `--qemu-network-socket`: Path of the network socket to be used for networking.
  - `--qemu-network-bridge`: Name of the network bridge to be used for networking. Default: `br0`
 
 The `--qemu-boot2docker-url` flag takes a few different forms.  By
@@ -53,7 +54,7 @@ using the `http://` form.
 Note that when using virtio the drives will be mounted as `/dev/vda` and `/dev/vdb`,
 instead of the usual `/dev/cdrom` and `/dev/sda`, since they are using paravirtualization.
 
-If using the real network (tap or bridge), note that it needs a DHCP server running.
+If using the real network (tap, vde or bridge), note that it needs a DHCP server running.
 The user network has it's own NAT network, which usually means it is running on 10.0.2.15
 Ultimately this driver should be able to query for IP, but for now the workaround is
 to use `--qemu-network-address` (and fixed addresses) until that feature is implemented.
