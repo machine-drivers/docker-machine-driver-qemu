@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/docker/machine/libmachine/drivers/plugin"
-	"github.com/machine-drivers/docker-machine-driver-qemu"
+	qemu "github.com/machine-drivers/docker-machine-driver-qemu"
 )
 
 func main() {
