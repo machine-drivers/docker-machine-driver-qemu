@@ -1,0 +1,7 @@
+---
+linters:
+  enable:
+    - gofmt
+    - goimports
+    - govet
+    - gocyclo

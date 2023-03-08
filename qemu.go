@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -40,6 +41,10 @@ type Driver struct {
 	DiskSize         int
 	CPU              int
 	Program          string
+	BIOS             bool
+	CPUType          string
+	MachineType      string
+	Firmware         string
 	Display          bool
 	DisplayType      string
 	Nographic        bool
@@ -55,16 +60,43 @@ type Driver struct {
 	DiskPath         string
 	CacheMode        string
 	IOMode           string
-	connectionString string
+	//connectionString string
 	//	conn             *libvirt.Connect
 	//	VM               *libvirt.Domain
-	vmLoaded        bool
+	//vmLoaded        bool
 	UserDataFile    string
 	CloudConfigRoot string
 	LocalPorts      string
 }
 
 func (d *Driver) GetCreateFlags() []mcnflag.Flag {
+	var qemu_arch string
+	switch runtime.GOARCH {
+	case "amd64":
+		qemu_arch = "x86_64"
+	case "arm64":
+		qemu_arch = "aarch64"
+	}
+	biosDefault := ""
+	uefiDefault := ""
+	var qemu_system string
+	var qemu_machine string
+	var qemu_cpu string
+	var qemu_firmware string
+	switch qemu_arch {
+	case "x86_64":
+		biosDefault = " (default)"
+		qemu_system = "qemu-system-x86_64"
+		qemu_machine = "" // default
+		qemu_cpu = ""     // default
+		qemu_firmware = "/usr/share/OVMF/OVMF_CODE.fd"
+	case "aarch64":
+		uefiDefault = " (default)"
+		qemu_system = "qemu-system-aarch64"
+		qemu_machine = "virt"
+		qemu_cpu = "cortex-a72"
+		qemu_firmware = "/usr/share/AAVMF/AAVMF_CODE.fd"
+	}
 	return []mcnflag.Flag{
 		mcnflag.IntFlag{
 			Name:  "qemu-memory",
@@ -84,7 +116,30 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 		mcnflag.StringFlag{
 			Name:  "qemu-program",
 			Usage: "Name of program to run",
-			Value: "qemu-system-x86_64",
+			Value: qemu_system,
+		},
+		mcnflag.StringFlag{
+			Name:  "qemu-machine",
+			Usage: "Machine",
+			Value: qemu_machine,
+		},
+		mcnflag.StringFlag{
+			Name:  "qemu-cpu",
+			Usage: "CPU",
+			Value: qemu_cpu,
+		},
+		mcnflag.BoolFlag{
+			Name:  "qemu-bios",
+			Usage: "Use BIOS" + biosDefault,
+		},
+		mcnflag.BoolFlag{
+			Name:  "qemu-uefi",
+			Usage: "Use UEFI" + uefiDefault,
+		},
+		mcnflag.StringFlag{
+			Name:  "qemu-firmware",
+			Usage: "Path to firmware file",
+			Value: qemu_firmware,
 		},
 		mcnflag.BoolFlag{
 			Name:  "qemu-display",
@@ -122,7 +177,7 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 		},
 		mcnflag.StringFlag{
 			Name:  "qemu-network-address",
-			Usage: "IP of the network adress to be used for networking (for tap)",
+			Usage: "IP of the network address to be used for networking (for tap)",
 		},
 		mcnflag.StringFlag{
 			Name:  "qemu-network-bridge",
@@ -180,7 +235,6 @@ func (d *Driver) GetSSHPort() (int, error) {
 	if d.SSHPort == 0 {
 		d.SSHPort = 22
 	}
-
 	return d.SSHPort, nil
 }
 
@@ -188,7 +242,6 @@ func (d *Driver) GetSSHUsername() string {
 	if d.SSHUser == "" {
 		d.SSHUser = "docker"
 	}
-
 	return d.SSHUser
 }
 
@@ -202,6 +255,9 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.DiskSize = flags.Int("qemu-disk-size")
 	d.CPU = flags.Int("qemu-cpu-count")
 	d.Program = flags.String("qemu-program")
+	d.MachineType = flags.String("qemu-machine")
+	d.CPUType = flags.String("qemu-cpu")
+	d.Firmware = flags.String("qemu-firmware")
 	d.Display = flags.Bool("qemu-display")
 	d.DisplayType = flags.String("qemu-display-type")
 	d.Nographic = flags.Bool("qemu-nographic")
@@ -213,6 +269,12 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.NetworkBridge = flags.String("qemu-network-bridge")
 	d.CacheMode = flags.String("qemu-cache-mode")
 	d.IOMode = flags.String("qemu-io-mode")
+	if flags.Bool("qemu-bios") {
+		d.BIOS = true
+	}
+	if flags.Bool("qemu-uefi") {
+		d.BIOS = false
+	}
 
 	d.SwarmMaster = flags.Bool("swarm-master")
 	d.SwarmHost = flags.String("swarm-host")
@@ -246,6 +308,7 @@ func (d *Driver) GetURL() (string, error) {
 
 func NewDriver(hostName, storePath string) drivers.Driver {
 	return &Driver{
+		BIOS:           runtime.GOARCH != "arm64",
 		PrivateNetwork: privateNetworkName,
 		BaseDriver: &drivers.BaseDriver{
 			SSHUser:     defaultSSHUser,
@@ -280,7 +343,6 @@ func checkPid(pid int) error {
 }
 
 func (d *Driver) GetState() (state.State, error) {
-
 	if _, err := os.Stat(d.pidfilePath()); err != nil {
 		return state.Stopped, nil
 	}
@@ -301,6 +363,7 @@ func (d *Driver) GetState() (state.State, error) {
 	if err != nil {
 		return state.Error, err
 	}
+
 	// RunState is one of:
 	// 'debug', 'inmigrate', 'internal-error', 'io-error', 'paused',
 	// 'postmigrate', 'prelaunch', 'finish-migrate', 'restore-vm',
@@ -323,7 +386,8 @@ func (d *Driver) PreCreateCheck() error {
 
 func (d *Driver) Create() error {
 	var err error
-	if d.Network == "user" {
+	switch d.Network {
+	case "user":
 		minPort, maxPort, err := parsePortRange(d.LocalPorts)
 		log.Debugf("port range: %d -> %d", minPort, maxPort)
 		if err != nil {
@@ -351,24 +415,24 @@ func (d *Driver) Create() error {
 		return err
 	}
 
-	log.Infof("Creating SSH key...")
+	log.Info("Creating SSH key...")
 	if err := ssh.GenerateSSHKey(d.sshKeyPath()); err != nil {
 		return err
 	}
 
-	log.Infof("Creating Disk image...")
+	log.Info("Creating Disk image...")
 	if err := d.generateDiskImage(d.DiskSize); err != nil {
 		return err
 	}
 
 	if d.UserDataFile != "" {
-		log.Infof("Creating Userdata Disk...")
+		log.Info("Creating Userdata Disk...")
 		if d.CloudConfigRoot, err = d.generateUserdataDisk(d.UserDataFile); err != nil {
 			return err
 		}
 	}
 
-	log.Infof("Starting QEMU VM...")
+	log.Info("Starting QEMU VM...")
 	return d.Start()
 }
 
@@ -379,10 +443,15 @@ func parsePortRange(rawPortRange string) (int, int, error) {
 
 	portRange := strings.Split(rawPortRange, "-")
 
+	if len(portRange) < 2 {
+		return 0, 0, fmt.Errorf("Invalid port range")
+	}
+
 	minPort, err := strconv.Atoi(portRange[0])
 	if err != nil {
 		return 0, 0, fmt.Errorf("Invalid port range")
 	}
+
 	maxPort, err := strconv.Atoi(portRange[1])
 	if err != nil {
 		return 0, 0, fmt.Errorf("Invalid port range")
@@ -395,7 +464,6 @@ func parsePortRange(rawPortRange string) (int, int, error) {
 	if maxPort-minPort < 2 {
 		return 0, 0, fmt.Errorf("Port range must be minimum 2 ports")
 	}
-
 	return minPort, maxPort, nil
 }
 
@@ -404,7 +472,7 @@ func getRandomPortNumberInRange(min int, max int) int {
 }
 
 func getAvailableTCPPortFromRange(minPort int, maxPort int) (int, error) {
-	port := 0
+	var port int
 	for i := 0; i <= 10; i++ {
 		var ln net.Listener
 		var err error
@@ -433,7 +501,7 @@ func getAvailableTCPPortFromRange(minPort int, maxPort int) (int, error) {
 			port = p
 			return port, nil
 		}
-		time.Sleep(1)
+		time.Sleep(time.Second)
 	}
 	return 0, fmt.Errorf("unable to allocate tcp port")
 }
@@ -444,14 +512,34 @@ func (d *Driver) Start() error {
 
 	var startCmd []string
 
+	if d.MachineType != "" {
+		startCmd = append(startCmd,
+			"-M", d.MachineType,
+		)
+	}
+
+	if d.CPUType != "" {
+		startCmd = append(startCmd,
+			"-cpu", d.CPUType,
+		)
+	}
+
+	if !d.BIOS {
+		if d.Firmware != "" {
+			startCmd = append(startCmd,
+				"-drive", fmt.Sprintf("file=%s,readonly,format=raw,if=pflash", d.Firmware))
+		} else {
+			return fmt.Errorf("unknown firmware")
+		}
+	}
+
 	if d.Display {
 		if d.DisplayType != "" {
 			startCmd = append(startCmd,
 				"-display", d.DisplayType,
 			)
-		} else {
-			// Use the default graphic output
 		}
+		// else use the default graphic output
 	} else {
 		if d.Nographic {
 			startCmd = append(startCmd,
@@ -481,19 +569,20 @@ func (d *Driver) Start() error {
 		"-pidfile", d.pidfilePath(),
 	)
 
-	if d.Network == "user" {
+	switch d.Network {
+	case "user":
 		startCmd = append(startCmd,
 			"-nic", fmt.Sprintf("user,model=virtio,hostfwd=tcp::%d-:22,hostfwd=tcp::%d-:2376,hostname=%s", d.SSHPort, d.EnginePort, d.GetMachineName()),
 		)
-	} else if d.Network == "tap" {
+	case "tap":
 		startCmd = append(startCmd,
 			"-nic", fmt.Sprintf("tap,model=virtio,ifname=%s,script=no,downscript=no", d.NetworkInterface),
 		)
-	} else if d.Network == "bridge" {
+	case "bridge":
 		startCmd = append(startCmd,
 			"-nic", fmt.Sprintf("bridge,model=virtio,br=%s", d.NetworkBridge),
 		)
-	} else {
+	default:
 		log.Errorf("Unknown network: %s", d.Network)
 	}
 
@@ -524,8 +613,6 @@ func (d *Driver) Start() error {
 		fmt.Printf("OUTPUT: %s\n", stdout)
 		fmt.Printf("ERROR: %s\n", stderr)
 		return err
-		//if err := cmdStart(d.Program, startCmd...); err != nil {
-		//	return err
 	}
 	log.Infof("Waiting for VM to start (ssh -p %d docker@localhost)...", d.SSHPort)
 
@@ -541,8 +628,9 @@ func cmdOutErr(cmdStr string, args ...string) (string, string, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
+	stdoutStr := stdout.String()
 	stderrStr := stderr.String()
-	log.Debugf("STDOUT: %v", stdout.String())
+	log.Debugf("STDOUT: %v", stdoutStr)
 	log.Debugf("STDERR: %v", stderrStr)
 	if err != nil {
 		if ee, ok := err.(*exec.Error); ok && ee == exec.ErrNotFound {
@@ -555,19 +643,12 @@ func cmdOutErr(cmdStr string, args ...string) (string, string, error) {
 			err = fmt.Errorf("%v %v failed: %v", cmdStr, strings.Join(args, " "), stderrStr)
 		}
 	}
-	return stdout.String(), stderrStr, err
-}
-
-func cmdStart(cmdStr string, args ...string) error {
-	cmd := exec.Command(cmdStr, args...)
-	log.Debugf("executing: %v %v", cmdStr, strings.Join(args, " "))
-	return cmd.Start()
+	return stdoutStr, stderrStr, err
 }
 
 func (d *Driver) Stop() error {
 	// _, err := d.RunQMPCommand("stop")
-	_, err := d.RunQMPCommand("system_powerdown")
-	if err != nil {
+	if _, err := d.RunQMPCommand("system_powerdown"); err != nil {
 		return err
 	}
 	return nil
@@ -584,8 +665,7 @@ func (d *Driver) Remove() error {
 		}
 	}
 	if s != state.Stopped {
-		_, err = d.RunQMPCommand("quit")
-		if err != nil {
+		if _, err := d.RunQMPCommand("quit"); err != nil {
 			return err
 		}
 	}
@@ -608,8 +688,7 @@ func (d *Driver) Restart() error {
 
 func (d *Driver) Kill() error {
 	// _, err := d.RunQMPCommand("quit")
-	_, err := d.RunQMPCommand("system_powerdown")
-	if err != nil {
+	if _, err := d.RunQMPCommand("system_powerdown"); err != nil {
 		return err
 	}
 	return nil
@@ -689,14 +768,14 @@ func (d *Driver) generateDiskImage(size int) error {
 	if err := tw.WriteHeader(file); err != nil {
 		return err
 	}
-	if _, err := tw.Write([]byte(pubKey)); err != nil {
+	if _, err := tw.Write(pubKey); err != nil {
 		return err
 	}
 	file = &tar.Header{Name: ".ssh/authorized_keys2", Size: int64(len(pubKey)), Mode: 0644}
 	if err := tw.WriteHeader(file); err != nil {
 		return err
 	}
-	if _, err := tw.Write([]byte(pubKey)); err != nil {
+	if _, err := tw.Write(pubKey); err != nil {
 		return err
 	}
 	if err := tw.Close(); err != nil {
@@ -717,7 +796,6 @@ func (d *Driver) generateDiskImage(size int) error {
 		return err
 	}
 	log.Debugf("DONE writing to %s and %s", rawFile, d.diskPath())
-
 	return nil
 }
 
@@ -731,22 +809,23 @@ func (d *Driver) generateUserdataDisk(userdataFile string) (string, error) {
 
 	machineDir := filepath.Join(d.StorePath, "machines", d.GetMachineName())
 	ccRoot := filepath.Join(machineDir, "cloud-config")
-	os.MkdirAll(ccRoot, 0755)
+	if err := os.MkdirAll(ccRoot, 0755); err != nil {
+		return "", err
+	}
 
 	userDataDir := filepath.Join(ccRoot, "openstack/latest")
-	os.MkdirAll(userDataDir, 0755)
+	if err := os.MkdirAll(userDataDir, 0755); err != nil {
+		return "", err
+	}
 
 	writeFile := filepath.Join(userDataDir, "user_data")
 	if err := ioutil.WriteFile(writeFile, userdata, 0644); err != nil {
 		return "", err
 	}
-
 	return ccRoot, nil
-
 }
 
 func (d *Driver) RunQMPCommand(command string) (map[string]interface{}, error) {
-
 	// connect to monitor
 	conn, err := net.Dial("unix", d.monitorPath())
 	if err != nil {
@@ -775,7 +854,7 @@ func (d *Driver) RunQMPCommand(command string) (map[string]interface{}, error) {
 	}
 
 	var initialResponse qmpInitialResponse
-	json.Unmarshal(buf[:nr], &initialResponse)
+	_ = json.Unmarshal(buf[:nr], &initialResponse)
 
 	// run 'qmp_capabilities' to switch to command mode
 	// { "execute": "qmp_capabilities" }
@@ -841,7 +920,7 @@ func WaitForTCPWithDelay(addr string, duration time.Duration) error {
 			continue
 		}
 		defer conn.Close()
-		if _, err = conn.Read(make([]byte, 1)); err != nil {
+		if _, err := conn.Read(make([]byte, 1)); err != nil {
 			time.Sleep(duration)
 			continue
 		}
